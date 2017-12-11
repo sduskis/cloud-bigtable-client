@@ -135,8 +135,8 @@ public class BatchExecutor {
   }
 
   protected static class BulkOperation {
-    private BulkMutation bulkMutation;
-    private BulkRead bulkRead;
+    protected BulkMutation bulkMutation;
+    protected BulkRead bulkRead;
 
     protected BulkOperation(
         BigtableSession session,

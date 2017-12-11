@@ -15,6 +15,7 @@
  */
 package com.google.cloud.bigtable.grpc;
 
+import java.util.List;
 import com.google.bigtable.admin.v2.CreateTableRequest;
 import com.google.bigtable.admin.v2.DeleteTableRequest;
 import com.google.bigtable.admin.v2.DropRowRangeRequest;
@@ -23,6 +24,7 @@ import com.google.bigtable.admin.v2.ListTablesRequest;
 import com.google.bigtable.admin.v2.ListTablesResponse;
 import com.google.bigtable.admin.v2.ModifyColumnFamiliesRequest;
 import com.google.bigtable.admin.v2.Table;
+import com.google.common.util.concurrent.ListenableFuture;
 
 /**
  * A client for the Cloud Bigtable Table Admin API.
@@ -39,6 +41,9 @@ public interface BigtableTableAdminClient {
    */
   void createTable(CreateTableRequest request);
 
+  //TODO - consider re-factoring
+  ListenableFuture<List<Table>> createTableAsync(CreateTableRequest request);
+  
   /**
    * Gets the details of a table.
    *

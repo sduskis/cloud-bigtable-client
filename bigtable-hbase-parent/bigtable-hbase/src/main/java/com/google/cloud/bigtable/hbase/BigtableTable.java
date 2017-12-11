@@ -695,7 +695,7 @@ public class BigtableTable implements Table {
    * @param response a {@link com.google.bigtable.v2.CheckAndMutateRowResponse} object.
    * @return a boolean.
    */
-  protected boolean wasMutationApplied(
+  public static boolean wasMutationApplied(
       CheckAndMutateRowRequest.Builder requestBuilder,
       CheckAndMutateRowResponse response) {
 
@@ -705,6 +705,18 @@ public class BigtableTable implements Table {
         && response.getPredicateMatched())
         || (requestBuilder.getFalseMutationsCount() > 0
         && !response.getPredicateMatched());
+  }
+
+  protected CheckAndMutateRowRequest.Builder makeConditionalMutationRequestBuilder(
+      byte[] row,
+      byte[] family,
+      byte[] qualifier,
+      CompareFilter.CompareOp compareOp,
+      byte[] value,
+      byte[] actionRow,
+      List<com.google.bigtable.v2.Mutation> mutations) throws IOException { 
+    return makeConditionalMutationRequestBuilder(row, family, qualifier, compareOp, value,
+        actionRow, mutations, hbaseAdapter.getBigtableTableName().toString());
   }
 
   /**
@@ -717,17 +729,19 @@ public class BigtableTable implements Table {
    * @param value an array of byte.
    * @param actionRow an array of byte.
    * @param mutations a {@link java.util.List} object.
-   * @return a {@link com.google.bigtable.v2.CheckAndMutateRowRequest.Builder} object.
+   * @param a {@link HBaseRequestAdapter} object
+   * @return tableName a string
    * @throws java.io.IOException if any.
    */
-  protected CheckAndMutateRowRequest.Builder makeConditionalMutationRequestBuilder(
+  public static CheckAndMutateRowRequest.Builder makeConditionalMutationRequestBuilder(
       byte[] row,
       byte[] family,
       byte[] qualifier,
       CompareFilter.CompareOp compareOp,
       byte[] value,
       byte[] actionRow,
-      List<com.google.bigtable.v2.Mutation> mutations) throws IOException {
+      List<com.google.bigtable.v2.Mutation> mutations,
+      String tableName) throws IOException {
 
     if (!Arrays.equals(actionRow, row)) {
       // The following odd exception message is for compatibility with HBase.
@@ -737,7 +751,7 @@ public class BigtableTable implements Table {
     CheckAndMutateRowRequest.Builder requestBuilder =
         CheckAndMutateRowRequest.newBuilder();
 
-    requestBuilder.setTableName(hbaseAdapter.getBigtableTableName().toString());
+    requestBuilder.setTableName(tableName);
 
     requestBuilder.setRowKey(ByteString.copyFrom(row));
     Scan scan = new Scan().addColumn(family, qualifier);

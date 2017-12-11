@@ -16,7 +16,7 @@
 package com.google.cloud.bigtable.grpc;
 
 import static com.google.cloud.bigtable.grpc.io.GoogleCloudResourcePrefixInterceptor.GRPC_RESOURCE_PREFIX_KEY;
-
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 import com.google.bigtable.admin.v2.BigtableTableAdminGrpc;
@@ -32,8 +32,10 @@ import com.google.cloud.bigtable.config.BigtableOptions;
 import com.google.cloud.bigtable.config.RetryOptions;
 import com.google.cloud.bigtable.grpc.async.BigtableAsyncRpc;
 import com.google.cloud.bigtable.grpc.async.BigtableAsyncUtilities;
+import com.google.cloud.bigtable.grpc.async.RetryingStreamOperation;
 import com.google.cloud.bigtable.grpc.async.RetryingUnaryOperation;
 import com.google.common.base.Predicates;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.protobuf.Empty;
 
 import io.grpc.CallOptions;
@@ -105,6 +107,12 @@ public class BigtableTableAdminGrpcClient implements BigtableTableAdminClient {
     createUnaryListener(request, createTableRpc, request.getParent()).getBlockingResult();
   }
 
+  //TODO - consider other options to refactor these new async methods into may be a subclass
+  @Override
+  public ListenableFuture<List<Table>> createTableAsync(CreateTableRequest request) {
+    return createStreamingListener(request, createTableRpc, request.getParent()).getAsyncResult();
+  }
+  
   /** {@inheritDoc} */
   @Override
   public void modifyColumnFamily(ModifyColumnFamiliesRequest request) {
@@ -128,6 +136,15 @@ public class BigtableTableAdminGrpcClient implements BigtableTableAdminClient {
     CallOptions callOptions = CallOptions.DEFAULT;
     Metadata metadata = createMetadata(resource);
     return new RetryingUnaryOperation<>(
+        retryOptions, request, rpc, callOptions, retryExecutorService, metadata);
+  }
+
+  private <ReqT, RespT> RetryingStreamOperation<ReqT, RespT> createStreamingListener(
+      ReqT request, BigtableAsyncRpc<ReqT, RespT> rpc, String tableName) {
+    //TODO - default options vs getCallOptions(rpc.getMethodDescriptor(), request);
+    CallOptions callOptions = CallOptions.DEFAULT;
+    Metadata metadata = createMetadata(tableName);
+    return new RetryingStreamOperation<>(
         retryOptions, request, rpc, callOptions, retryExecutorService, metadata);
   }
 
