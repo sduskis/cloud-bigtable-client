@@ -48,12 +48,12 @@ public class RetryingMutateRowsOperation extends
     super(retryOptions, originalRquest, retryableRpc, callOptions, retryExecutorService,
         originalMetadata, clock);
     requestManager = new MutateRowsRequestManager(retryOptions, originalRquest);
-    operationSpan.addAnnotation("MutationCount", ImmutableMap.of("count",
+    tracker.addAnnotation("MutationCount", ImmutableMap.of("count",
       AttributeValue.longAttributeValue(originalRquest.getEntriesCount())));
   }
 
   @Override
-  public void onMessage(MutateRowsResponse message) {
+  protected void onMessage(MutateRowsResponse message) {
     try {
       requestManager.onMessage(message);
     } catch (Exception e) {
@@ -86,18 +86,18 @@ public class RetryingMutateRowsOperation extends
     // Perform a partial retry, if the backoff policy allows it.
     long nextBackOff = getNextBackoff();
     if (nextBackOff == BackOff.STOP) {
-      // Return the response as is, and don't retry;
-      rpc.getRpcMetrics().markRetriesExhasted();
-      completionFuture.set(Arrays.asList(requestManager.buildResponse()));
-      operationSpan.addAnnotation("MutationCount", ImmutableMap.of("failureCount",
+      tracker.addAnnotation("Retries failed", ImmutableMap.of("entries",
         AttributeValue.longAttributeValue(requestManager.getRetryRequest().getEntriesCount())));
+      tracker.exhaustedRetries(null);
+      // Return the response as is, and don't retry;
+      completionFuture.set(Arrays.asList(requestManager.buildResponse()));
       return true;
+    } else {
+      tracker.addAnnotation("Retrying", ImmutableMap.of("entries",
+          AttributeValue.longAttributeValue(requestManager.getRetryRequest().getEntriesCount())));
+      performRetry(nextBackOff);
+      return false;
     }
-
-    performRetry(nextBackOff);
-    operationSpan.addAnnotation("MutationCount", ImmutableMap.of("retryCount",
-      AttributeValue.longAttributeValue(requestManager.getRetryRequest().getEntriesCount())));
-    return false;
   }
 
 }

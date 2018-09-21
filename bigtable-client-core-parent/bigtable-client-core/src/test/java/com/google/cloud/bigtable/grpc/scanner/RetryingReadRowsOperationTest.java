@@ -24,8 +24,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.google.api.client.util.ExponentialBackOff;
-import com.google.api.core.ApiClock;
 import com.google.cloud.bigtable.config.RetryOptions;
 import com.google.cloud.bigtable.grpc.async.OperationClock;
 import com.google.cloud.bigtable.grpc.io.Watchdog;
@@ -157,7 +155,7 @@ public class RetryingReadRowsOperationTest {
     start(underTest);
     ReadRowsResponse response = ReadRowsResponse.getDefaultInstance();
 
-    underTest.onMessage(response);
+    underTest.getListener().onMessage(response);
     verify(mockFlatRowObserver, times(0)).onNext(any(FlatRow.class));
     verify(mockClientCall, times(2)).request(eq(1));
 
@@ -170,7 +168,7 @@ public class RetryingReadRowsOperationTest {
     start(underTest);
     ByteString key = ByteString.copyFrom("SomeKey", "UTF-8");
     ReadRowsResponse response = buildResponse(key);
-    underTest.onMessage(response);
+    underTest.getListener().onMessage(response);
     verify(mockFlatRowObserver, times(1)).onNext(any(FlatRow.class));
     checkRetryRequest(underTest, key, 9);
     verify(mockClientCall, times(2)).request(eq(1));
@@ -185,7 +183,7 @@ public class RetryingReadRowsOperationTest {
     ByteString key1 = ByteString.copyFrom("SomeKey1", "UTF-8");
     ByteString key2 = ByteString.copyFrom("SomeKey2", "UTF-8");
     ReadRowsResponse response = buildResponse(key1, key2);
-    underTest.onMessage(response);
+    underTest.getListener().onMessage(response);
     verify(mockFlatRowObserver, times(2)).onNext(any(FlatRow.class));
     checkRetryRequest(underTest, key2, 8);
     verify(mockClientCall, times(2)).request(eq(1));
@@ -200,8 +198,8 @@ public class RetryingReadRowsOperationTest {
 
     ByteString key1 = ByteString.copyFrom("SomeKey1", "UTF-8");
     ByteString key2 = ByteString.copyFrom("SomeKey2", "UTF-8");
-    underTest.onMessage(buildResponse(key1));
-    underTest.onMessage(buildResponse(key2));
+    underTest.getListener().onMessage(buildResponse(key1));
+    underTest.getListener().onMessage(buildResponse(key2));
     verify(mockFlatRowObserver, times(2)).onNext(any(FlatRow.class));
     checkRetryRequest(underTest, key2, 8);
     verify(mockClientCall, times(3)).request(eq(1));
@@ -253,10 +251,10 @@ public class RetryingReadRowsOperationTest {
 
     ByteString key1 = ByteString.copyFrom("SomeKey1", "UTF-8");
     ByteString key2 = ByteString.copyFrom("SomeKey2", "UTF-8");
-    underTest.onMessage(buildResponse(key1));
-    underTest.onClose(Status.ABORTED, new Metadata());
+    underTest.getListener().onMessage(buildResponse(key1));
+    underTest.getListener().onClose(Status.ABORTED, new Metadata());
     Assert.assertFalse(underTest.getRowMerger().isComplete());
-    underTest.onMessage(buildResponse(key2));
+    underTest.getListener().onMessage(buildResponse(key2));
     verify(mockFlatRowObserver, times(2)).onNext(any(FlatRow.class));
     checkRetryRequest(underTest, key2, 8);
     verify(mockClientCall, times(4)).request(eq(1));
@@ -273,22 +271,22 @@ public class RetryingReadRowsOperationTest {
     ByteString key1 = ByteString.copyFrom("SomeKey1", "UTF-8");
     ByteString key2 = ByteString.copyFrom("SomeKey2", "UTF-8");
 
-    underTest.onMessage(buildResponse(key0));
+    underTest.getListener().onMessage(buildResponse(key0));
 
     // A partial row is found
-    underTest.onMessage(setCommitToFalse(buildResponse(key1)));
+    underTest.getListener().onMessage(setCommitToFalse(buildResponse(key1)));
     Assert.assertFalse(underTest.getRowMerger().isInNewState());
 
     // a round of successful retries.
     performSuccessfulScanTimeouts(underTest);
     Assert.assertTrue(underTest.getRowMerger().isInNewState());
 
-    underTest.onClose(Status.ABORTED, new Metadata());
+    underTest.getListener().onClose(Status.ABORTED, new Metadata());
     Assert.assertFalse(underTest.getRowMerger().isComplete());
     checkRetryRequest(underTest, key0, 9);
 
     // a message gets through
-    underTest.onMessage(buildResponse(key2));
+    underTest.getListener().onMessage(buildResponse(key2));
     verify(mockFlatRowObserver, times(2)).onNext(any(FlatRow.class));
     checkRetryRequest(underTest, key2, 8);
 
@@ -307,7 +305,7 @@ public class RetryingReadRowsOperationTest {
   public void testCancel() {
     RetryingReadRowsOperation underTest = createOperation();
     start(underTest);
-    underTest.onClose(Status.CANCELLED, new Metadata());
+    underTest.getListener().onClose(Status.CANCELLED, new Metadata());
     verifyCloseStats(0);
     verify(mockFlatRowObserver, times(0)).onCompleted();
     verify(mockFlatRowObserver, times(1)).onError(any(Throwable.class));
@@ -328,7 +326,7 @@ public class RetryingReadRowsOperationTest {
     start(underTest);
 
     ByteString key = ByteString.copyFrom("SomeKey1", "UTF-8");
-    underTest.onMessage(buildResponse(key));
+    underTest.getListener().onMessage(buildResponse(key));
 
     // N successful scan timeout retries
     performSuccessfulScanTimeouts(underTest);
@@ -351,8 +349,8 @@ public class RetryingReadRowsOperationTest {
 
     ByteString key1 = ByteString.copyFrom("SomeKey1", "UTF-8");
     ByteString key2 = ByteString.copyFrom("SomeKey2", "UTF-8");
-    underTest.onMessage(buildResponse(key1));
-    underTest.onClose(Status.ABORTED, new Metadata());
+    underTest.getListener().onMessage(buildResponse(key1));
+    underTest.getListener().onClose(Status.ABORTED, new Metadata());
     Assert.assertTrue(underTest.inRetryMode());
     expectedRetryCount++;
     checkRetryRequest(underTest, key1, 9);
@@ -364,10 +362,10 @@ public class RetryingReadRowsOperationTest {
     }
     checkRetryRequest(underTest, key1, 9);
     Assert.assertFalse(underTest.inRetryMode());
-    underTest.onMessage(buildResponse(key2));
+    underTest.getListener().onMessage(buildResponse(key2));
 
     for (int i = 0; i < RETRY_OPTIONS.getMaxScanTimeoutRetries(); i++) {
-      underTest.onClose(Status.ABORTED, new Metadata());
+      underTest.getListener().onClose(Status.ABORTED, new Metadata());
       expectedRetryCount++;
 
       performTimeout(underTest);
@@ -405,7 +403,7 @@ public class RetryingReadRowsOperationTest {
   }
 
   protected void performTimeout(RetryingReadRowsOperation underTest) {
-    underTest.onClose(
+    underTest.getListener().onClose(
         Status.CANCELLED.withCause(new
             StreamWaitTimeoutException(
                 Watchdog.State.WAITING, RETRY_OPTIONS.getReadPartialRowTimeoutMillis())),
@@ -427,13 +425,13 @@ public class RetryingReadRowsOperationTest {
     verify(mockRetryableRpc, times(1)).newCall(eq(CallOptions.DEFAULT));
     verify(mockRetryableRpc, times(1)).start(
       eq(READ_ENTIRE_TABLE_REQUEST),
-      same(underTest),
+      any(ClientCall.Listener.class),
       any(Metadata.class),
       same(mockClientCall));
   }
 
   private void finishOK(RetryingReadRowsOperation underTest, int expectedRetryCount) {
-    underTest.onClose(Status.OK, metaData);
+    underTest.getListener().onClose(Status.OK, metaData);
     verifyCloseStats(expectedRetryCount);
     Assert.assertTrue(underTest.getRowMerger().isComplete());
     verify(mockFlatRowObserver, times(1)).onCompleted();

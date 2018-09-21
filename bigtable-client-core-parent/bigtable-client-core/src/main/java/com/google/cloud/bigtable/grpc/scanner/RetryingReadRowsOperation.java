@@ -17,6 +17,7 @@ package com.google.cloud.bigtable.grpc.scanner;
 
 import com.google.api.client.util.Preconditions;
 import com.google.api.core.ApiClock;
+import com.google.cloud.bigtable.grpc.io.ChannelPool;
 import com.google.cloud.bigtable.grpc.io.Watchdog.State;
 import com.google.cloud.bigtable.grpc.io.Watchdog.StreamWaitTimeoutException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -161,7 +162,7 @@ public class RetryingReadRowsOperation extends
 
   /** {@inheritDoc} */
   @Override
-  public void onMessage(ReadRowsResponse message) {
+  protected void onMessage(ReadRowsResponse message) {
     try {
       resetStatusBasedBackoff();
       // We've had at least one successful RPC, reset the backoff and retry counter
@@ -169,13 +170,14 @@ public class RetryingReadRowsOperation extends
 
       ByteString previouslyProcessedKey = rowMerger.getLastCompletedRowKey();
 
-      operationSpan.addAnnotation("Got a response");
+
+      tracker.addAnnotation("Got a response");
       // This may take some time. This must not block so that gRPC worker threads don't leak.
       rowMerger.onNext(message);
 
       // Add an annotation for the number of rows that were returned in the previous response.
       int rowCountInLastMessage = rowMerger.getRowCountInLastMessage();
-      operationSpan.addAnnotation("Processed Response", ImmutableMap.of("rowCount",
+      tracker.addAnnotation("Processed Response", ImmutableMap.of("rowCount",
           AttributeValue.longAttributeValue(rowCountInLastMessage)));
 
       totalRowsProcessed += rowCountInLastMessage;
@@ -206,7 +208,7 @@ public class RetryingReadRowsOperation extends
   @Override
   protected void finalizeStats(Status status) {
     // Add an annotation for the total number of rows that were returned across all responses.
-    operationSpan.addAnnotation("Total Rows Processed",
+    tracker.addAnnotation("Total Rows Processed",
         ImmutableMap.of("rowCount", AttributeValue.longAttributeValue(totalRowsProcessed)));
     super.finalizeStats(status);
   }
@@ -219,14 +221,12 @@ public class RetryingReadRowsOperation extends
 
   /** {@inheritDoc} */
   @Override
-  public void onClose(Status status, Metadata trailers) {
-    if (status.getCause() instanceof StreamWaitTimeoutException
-        && ((StreamWaitTimeoutException)status.getCause()).getState() == State.WAITING) {
-      handleTimeoutError(status);
-      return;
+  public void onError(Status status, Metadata trailers) {
+    if (status.getCause() instanceof StreamWaitTimeoutException) {
+      handleTimeoutError(status, trailers);
+    } else {
+      super.onError(status, trailers);
     }
-
-    super.onClose(status, trailers);
   }
 
   /** {@inheritDoc} */
@@ -257,15 +257,15 @@ public class RetryingReadRowsOperation extends
    *
    * @return true if a retry has been scheduled
    */
-  private void handleTimeoutError(Status status) {
+  private void handleTimeoutError(Status status, Metadata trailers) {
     Preconditions.checkArgument(status.getCause() instanceof StreamWaitTimeoutException,
         "status is not caused by a StreamWaitTimeoutException");
     StreamWaitTimeoutException e = ((StreamWaitTimeoutException) status.getCause());
 
     // Cancel the existing rpc.
-    rpcTimerContext.close();
-    failedCount++;
+    tracker.incrementFailedCount();
 
+    String channelId = ChannelPool.extractIdentifier(trailers);
     // Can this request be retried
     int maxRetries = retryOptions.getMaxScanTimeoutRetries();
     if (retryOptions.enableRetries() && ++timeoutRetryCount <= maxRetries) {
@@ -275,10 +275,7 @@ public class RetryingReadRowsOperation extends
       resetStatusBasedBackoff();
       performRetry(0);
     } else {
-      LOG.warn("The client could not get a response after %d tries, giving up.",
-          timeoutRetryCount);
-      rpc.getRpcMetrics().markFailure();
-      finalizeStats(status);
+      tracker.failure(status, channelId, trailers);
       setException(getExhaustedRetriesException(status));
     }
   }

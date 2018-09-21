@@ -58,7 +58,7 @@ public class RetryingUnaryOperation<RequestT, ResponseT>
 
   /** {@inheritDoc} */
   @Override
-  public void onMessage(ResponseT message) {
+  protected void onMessage(ResponseT message) {
     value = message;
     completionFuture.set(value);
   }

@@ -104,8 +104,8 @@ public class TestRetryingMutateRowsOperation {
   }
 
   private static void send(RetryingMutateRowsOperation underTest, MutateRowsResponse sendResponse) {
-    underTest.onMessage(sendResponse);
-    underTest.onClose(io.grpc.Status.OK, new Metadata());
+    underTest.getListener().onMessage(sendResponse);
+    underTest.getListener().onClose(io.grpc.Status.OK, new Metadata());
   }
 
   private static void checkResponse(ListenableFuture<?> future, MutateRowsResponse response)
