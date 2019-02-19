@@ -20,7 +20,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import com.google.bigtable.admin.v2.ListTablesRequest;
 import com.google.cloud.bigtable.config.BigtableOptions;
 
 /**
@@ -44,9 +43,7 @@ public class IntegrationBigtableSessionTest {
     BigtableOptions options = BigtableOptions.builder().setProjectId(projectId)
         .setInstanceId(instanceId).setUserAgent("Test").build();
     try (BigtableSession bs = new BigtableSession(options)) {
-      ListTablesRequest request = ListTablesRequest.newBuilder()
-          .setParent(options.getInstanceName().getInstanceName()).build();
-      bs.getTableAdminClient().listTables(request);
+      bs.getTableAdminClientWrapper().listTables();
     } catch (Exception e) {
       e.printStackTrace();
     }

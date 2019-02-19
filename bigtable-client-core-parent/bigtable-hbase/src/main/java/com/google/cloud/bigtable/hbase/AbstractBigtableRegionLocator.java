@@ -21,6 +21,10 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
+import com.google.api.core.ApiFunction;
+import com.google.api.core.ApiFuture;
+import com.google.api.core.ApiFutureCallback;
+import com.google.api.core.ApiFutures;
 import com.google.cloud.bigtable.core.IBigtableDataClient;
 import com.google.cloud.bigtable.data.v2.models.KeyOffset;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -32,10 +36,6 @@ import com.google.cloud.bigtable.config.BigtableOptions;
 import com.google.cloud.bigtable.config.Logger;
 import com.google.cloud.bigtable.grpc.BigtableTableName;
 import com.google.cloud.bigtable.hbase.adapters.SampledRowKeysAdapter;
-import com.google.common.base.Function;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 
 /**
  * <p> AbstractBigtbleRegionLocator class. </p>
@@ -52,7 +52,7 @@ public abstract class AbstractBigtableRegionLocator {
   private static final Logger LOG = new Logger(AbstractBigtableRegionLocator.class);
 
   protected final TableName tableName;
-  private ListenableFuture<List<HRegionLocation>> regionsFuture;
+  private ApiFuture<List<HRegionLocation>> regionsFuture;
   private final IBigtableDataClient client;
   private final SampledRowKeysAdapter adapter;
   private final BigtableTableName bigtableTableName;
@@ -75,7 +75,7 @@ public abstract class AbstractBigtableRegionLocator {
    * @param reload a boolean field.
    * @return a {@link List} object.
    */
-  protected synchronized ListenableFuture<List<HRegionLocation>> getRegionsAsync(boolean reload) {
+  protected synchronized ApiFuture<List<HRegionLocation>> getRegionsAsync(boolean reload) {
     // If we don't need to refresh and we have a recent enough version, just use that.
     if (!reload && regionsFuture != null &&
         regionsFetchTimeMillis + MAX_REGION_AGE_MILLIS > System.currentTimeMillis()) {
@@ -85,16 +85,16 @@ public abstract class AbstractBigtableRegionLocator {
     LOG.debug("Sampling rowkeys for table %s", bigtableTableName.toString());
 
     try {
-      ListenableFuture<List<KeyOffset>> future =
+      ApiFuture<List<KeyOffset>> future =
           client.sampleRowKeysAsync(bigtableTableName.getTableId());
-      this.regionsFuture = Futures
-          .transform(future, new Function<List<KeyOffset>, List<HRegionLocation>>() {
+      this.regionsFuture = ApiFutures
+          .transform(future, new ApiFunction<List<KeyOffset>, List<HRegionLocation>>() {
             @Override
             public List<HRegionLocation> apply(@Nullable List<KeyOffset> input) {
               return adapter.adaptResponse(input);
             }
           }, MoreExecutors.directExecutor());
-      Futures.addCallback(this.regionsFuture, new FutureCallback<List<HRegionLocation>>() {
+      ApiFutures.addCallback(this.regionsFuture, new ApiFutureCallback<List<HRegionLocation>>() {
         @Override public void onSuccess(@Nullable List<HRegionLocation> result) {
         }
         @Override public void onFailure(Throwable t) {
@@ -107,7 +107,7 @@ public abstract class AbstractBigtableRegionLocator {
       return this.regionsFuture;
     } catch(Throwable throwable) {
       regionsFuture = null;
-      Futures.immediateFailedFuture(throwable);
+      ApiFutures.immediateFailedFuture(throwable);
     }
     return regionsFuture;
   }

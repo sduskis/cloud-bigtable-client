@@ -15,6 +15,8 @@
  */
 package com.google.cloud.bigtable.grpc;
 
+import static com.google.cloud.bigtable.util.ApiFutureUtil.adapt;
+import static com.google.cloud.bigtable.util.ApiFutureUtil.transform;
 import com.google.api.core.ApiFuture;
 import com.google.bigtable.v2.CheckAndMutateRowRequest;
 import com.google.bigtable.v2.CheckAndMutateRowResponse;
@@ -37,12 +39,9 @@ import com.google.cloud.bigtable.data.v2.models.RowMutation;
 import com.google.cloud.bigtable.grpc.scanner.FlatRow;
 import com.google.cloud.bigtable.grpc.scanner.FlatRowConverter;
 import com.google.cloud.bigtable.grpc.scanner.ResultScanner;
-import com.google.cloud.bigtable.util.ApiFutureUtil;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
 import io.grpc.stub.StreamObserver;
 
 import java.io.IOException;
@@ -75,16 +74,16 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
   /** {@inheritDoc} */
   @Override
-  public ListenableFuture<Void> mutateRowAsync(RowMutation rowMutation) {
+  public ApiFuture<Void> mutateRowAsync(RowMutation rowMutation) {
     ListenableFuture<MutateRowResponse> response =
         delegate.mutateRowAsync(rowMutation.toProto(requestContext));
-    return  Futures.transform(response, new Function<MutateRowResponse, Void>() {
+    return transform(response, new Function<MutateRowResponse, Void>() {
       @Nullable
       @Override
       public Void apply(@Nullable MutateRowResponse mutateRowResponse) {
         return null;
       }
-    }, MoreExecutors.directExecutor());
+    });
   }
 
   /** {@inheritDoc} */
@@ -100,12 +99,12 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
   public ApiFuture<Row> readModifyWriteRowAsync(ReadModifyWriteRow readModifyWriteRow) {
     ListenableFuture<ReadModifyWriteRowResponse> response =
         delegate.readModifyWriteRowAsync(readModifyWriteRow.toProto(requestContext));
-    return ApiFutureUtil.adapt(Futures.transform(response, new Function<ReadModifyWriteRowResponse, Row>() {
+    return transform(response, new Function<ReadModifyWriteRowResponse, Row>() {
       @Override
-      public Row apply(ReadModifyWriteRowResponse response) {
-        return new DefaultRowAdapter().createRowFromProto(response.getRow());
+      public Row apply(ReadModifyWriteRowResponse response1) {
+        return new DefaultRowAdapter().createRowFromProto(response1.getRow());
       }
-    }, MoreExecutors.directExecutor()));
+    });
   }
 
   /** {@inheritDoc} */
@@ -116,18 +115,17 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
   /** {@inheritDoc} */
   @Override
-  public ListenableFuture<Boolean> checkAndMutateRowAsync(
+  public ApiFuture<Boolean> checkAndMutateRowAsync(
       ConditionalRowMutation conditionalRowMutation) {
     final CheckAndMutateRowRequest request = conditionalRowMutation.toProto(requestContext);
     final ListenableFuture<CheckAndMutateRowResponse> response =
         delegate.checkAndMutateRowAsync(request);
-    return Futures.transform(response, new Function<CheckAndMutateRowResponse, Boolean>() {
-
+    return transform(response, new Function<CheckAndMutateRowResponse, Boolean>() {
       @Override
       public Boolean apply(CheckAndMutateRowResponse checkAndMutateRowResponse) {
         return checkAndMutateRowResponse.getPredicateMatched();
       }
-    }, MoreExecutors.directExecutor());
+    });
   }
 
   /** {@inheritDoc} */
@@ -158,7 +156,7 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
   /** {@inheritDoc} */
   @Override
-  public ListenableFuture<List<KeyOffset>> sampleRowKeysAsync(String tableId) {
+  public ApiFuture<List<KeyOffset>> sampleRowKeysAsync(String tableId) {
     String fullTableName = NameUtil
         .formatTableName(requestContext.getProjectId(), requestContext.getInstanceId(), tableId);
     SampleRowKeysRequest requestProto =
@@ -166,7 +164,7 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
     ListenableFuture<List<SampleRowKeysResponse>> responseProto =
         delegate.sampleRowKeysAsync(requestProto);
 
-    return Futures.transform(responseProto, new Function<List<SampleRowKeysResponse>, List<KeyOffset>>() {
+    return transform(responseProto, new Function<List<SampleRowKeysResponse>, List<KeyOffset>>() {
       @Override
       public List<KeyOffset> apply(@Nonnull List<SampleRowKeysResponse> rowKeysList) {
         if(rowKeysList == null || rowKeysList.isEmpty()){
@@ -180,7 +178,7 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
         return keyOffsetBuilder.build();
       }
-    }, MoreExecutors.directExecutor());
+    });
   }
 
   /** {@inheritDoc} */
@@ -218,10 +216,11 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
   /** {@inheritDoc} */
   @Override
-  public ListenableFuture<List<Row>> readRowsAsync(Query request) {
-    ListenableFuture<List<FlatRow>> responseProto = readFlatRowsAsync(request);
+  public ApiFuture<List<Row>> readRowsAsync(Query request) {
+    ListenableFuture<List<FlatRow>> responseProto =
+        delegate.readFlatRowsAsync(request.toProto(requestContext));
 
-    return Futures.transform(responseProto, new Function<List<FlatRow>, List<Row>>() {
+    return transform(responseProto, new Function<List<FlatRow>, List<Row>>() {
       @Override
       public List<Row> apply(List<FlatRow> flatRowList) {
         ImmutableList.Builder<Row> rowBuilder =
@@ -232,7 +231,7 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
         return rowBuilder.build();
       }
-    }, MoreExecutors.directExecutor());
+    });
   }
 
   /** {@inheritDoc} */
@@ -249,8 +248,8 @@ public class BigtableDataClientWrapper implements IBigtableDataClient {
 
   /** {@inheritDoc} */
   @Override
-  public ListenableFuture<List<FlatRow>> readFlatRowsAsync(Query request) {
-    return delegate.readFlatRowsAsync(request.toProto(requestContext));
+  public ApiFuture<List<FlatRow>> readFlatRowsAsync(Query request) {
+    return adapt(delegate.readFlatRowsAsync(request.toProto(requestContext)));
   }
 
   /** {@inheritDoc} */
